@@ -1,15 +1,21 @@
 package services
 
 import (
-	"bytes"
 	"encoding/json"
-	"io/ioutil"
 	"net/http"
+	"github.com/usamaiqbal83/leadfuze-codereview/domain"
+	"github.com/pkg/errors"
 )
 
 const host = "http://165.227.202.198:5000"
 
+type Options struct {
+	WebClient domain.IWebClient
+	Key string
+}
+
 type Email struct {
+	WebClient domain.IWebClient
 	Key string
 }
 
@@ -20,8 +26,8 @@ type EmailVerifyResponse struct {
 	CatchAll bool   `json:"catchAll"`
 }
 
-func NewService(key string) *Email {
-	return &Email{Key: key}
+func NewService(options *Options) *Email {
+	return &Email{WebClient: options.WebClient, Key: options.Key}
 }
 
 func (service *Email) VerifyEmail(email string) (bool, error) {
@@ -36,22 +42,15 @@ func (service *Email) VerifyEmail(email string) (bool, error) {
 		return false, err
 	}
 
-	resp, err := http.Post(host, "application/json", bytes.NewBuffer(res))
-	if err != nil {
-		return false, err
-	}
-
-	defer resp.Body.Close()
-
-	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return false, err
+	code, data, err := service.WebClient.POST(host, res)
+	if err != nil || code != http.StatusOK {
+		return false, errors.New("not verified")
 	}
 
 	response := EmailVerifyResponse{}
 
 	// unmarshal response
-	if err := json.Unmarshal(body, &response); err != nil {
+	if err := json.Unmarshal(data, &response); err != nil {
 		return false, err
 	}
 
