@@ -7,7 +7,7 @@ import (
 
 	"github.com/labstack/echo"
 	"github.com/labstack/echo/middleware"
-	"github.com/usamaiqbal83/leadfuzz-test/domain"
+	"github.com/usamaiqbal83/leadfuze-codereview/domain"
 	"gopkg.in/tylerb/graceful.v1"
 )
 

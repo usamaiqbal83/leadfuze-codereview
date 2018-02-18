@@ -3,7 +3,7 @@ package users
 import (
 	"strings"
 
-	"github.com/usamaiqbal83/leadfuzz-test/domain"
+	"github.com/usamaiqbal83/leadfuze-codereview/domain"
 )
 
 const (

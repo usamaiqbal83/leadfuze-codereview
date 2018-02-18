@@ -1,7 +1,7 @@
 package users
 
 import (
-	"github.com/usamaiqbal83/leadfuzz-test/domain"
+	"github.com/usamaiqbal83/leadfuze-codereview/domain"
 )
 
 type Options struct {

@@ -4,9 +4,9 @@ import (
 	"math/rand"
 	"time"
 
-	"github.com/usamaiqbal83/leadfuzz-test/resources/users"
-	"github.com/usamaiqbal83/leadfuzz-test/server"
-	"github.com/usamaiqbal83/leadfuzz-test/services"
+	"github.com/usamaiqbal83/leadfuze-codereview/resources/users"
+	"github.com/usamaiqbal83/leadfuze-codereview/server"
+	"github.com/usamaiqbal83/leadfuze-codereview/services"
 )
 
 func main(){
