@@ -6,7 +6,17 @@ import (
 	"strings"
 
 	"github.com/labstack/echo"
+	"github.com/pkg/errors"
+	"encoding/json"
+	"sync"
+	"time"
 )
+
+const rateLimiterBufferLength = 15
+
+type VerifyEmailResponse struct {
+	VerifiedEmail string `json:"verifiedEmail"`
+}
 
 // HandleCreateCdr create a cdr
 func (resource *Resource) HandleFetchUser(c echo.Context) error {
@@ -17,27 +27,88 @@ func (resource *Resource) HandleFetchUser(c echo.Context) error {
 		return CreateSuccessResponseWithoutData(&c, http.StatusBadRequest, "Please try again", "Operation failed")
 	}
 
-	go func(resource *Resource, user *User) {
-		emails := resource.Process(user)
+	emails := resource.Process(&user)
 
-		fmt.Println("All emails")
-		fmt.Println(emails)
+	fmt.Println("All emails")
+	fmt.Println(emails)
 
-		var vEmails []string
+	result, err := resource.FindVerifiedEmail(emails)
+	if err != nil {
+		res, _ := json.Marshal(VerifyEmailResponse{})
+		return CreateSuccessResponse(&c,http.StatusOK, "No Data", "No verified email found", res)
+	}
 
-		for _, email := range emails {
-			success, _ := resource.EmailService.VerifyEmail(email)
-			if success {
-				vEmails = append(vEmails, email)
-			}
+	res, _ := json.Marshal(VerifyEmailResponse{VerifiedEmail:result})
+	return CreateSuccessResponse(&c,http.StatusOK, "Data found", "Verified email found", res)
+}
+
+func (resource *Resource)FindVerifiedEmail(emails []string) (string, error){
+	// channel which includes tokens for rate limiting
+	var tokens = make(chan int, rateLimiterBufferLength)
+	resource.preFillTokens(tokens)
+	// channel to indicate that required result had been found
+	var found = make(chan string,1)
+
+	var wg sync.WaitGroup
+	wg.Add(len(emails))
+
+	fmt.Println(len(emails))
+	for _, email := range emails {
+		resource.consumeToken(tokens)
+
+		select {
+		case d := <-found:
+			return d, nil
+		default:
+			go func(resource *Resource, email string, ch chan int, res chan string) {
+				defer wg.Done()
+				fmt.Println("Processing for email : ", email)
+				success, _ := resource.EmailService.VerifyEmail(email)
+				if success {
+					found <- email
+				}
+				resource.releaseToken(ch)
+			}(resource, email, tokens, found)
 		}
+	}
 
-		fmt.Println("Verified emails")
-		fmt.Println(vEmails)
+	// if program reaches here that means all batches have been sent to webservices
+	// all responses may not have arrived yet
+	// so wait for the responses to arrive
+	var done = make(chan struct{})
+	go func() {
+		// wait for processing of all emails
+		wg.Wait()
+		close(done)
+	}()
 
-	}(resource, &user)
+	// following conditions actually breaks the waiting if all emails have been sent for processing and now waiting for results
+	// i) wait group's waiting ends as all email responses are received and no one was verified
+	// ii) time out after 1 minute
+	// iii) any email got verified
+	select {
+		case <- done:
+			return "", errors.New("No verified email found")
+		case <-time.After(time.Minute * 1):
+			return "", errors.New("No verified email found")
+		case d := <-found:
+			return d, nil
+	}
+	return "", errors.New("No verified email found")
+}
 
-	return CreateSuccessResponseWithoutData(&c, http.StatusOK, "Success", "Processing started")
+func (resource *Resource) preFillTokens(buffer chan int) {
+	for i := 0; i < rateLimiterBufferLength ; i++ {
+		buffer <- 1
+	}
+}
+
+func (resource *Resource) consumeToken(buffer chan int) {
+	<- buffer
+}
+
+func (resource *Resource) releaseToken(buffer chan int) {
+	buffer <- 1
 }
 
 func (resource *Resource) Process(user *User) []string {
@@ -101,5 +172,13 @@ func CreateSuccessResponseWithoutData(c *echo.Context, requestCode int, message 
 
 	localC := *c
 	response := fmt.Sprintf("{\"data\":{},\"message\":%q,\"submessage\":%q}", message, subMessage)
+	return localC.JSONBlob(requestCode, []byte(response))
+}
+
+func CreateSuccessResponse(c *echo.Context, requestCode int, message string, subMessage string, data []byte) error {
+
+	localC := *c
+	response := fmt.Sprintf("{\"data\":%s,\"message\":%q,\"submessage\":%q}", data, message, subMessage)
+	fmt.Print(response)
 	return localC.JSONBlob(requestCode, []byte(response))
 }
